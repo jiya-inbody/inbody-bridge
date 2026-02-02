@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InBody Package Deal Calculator</title>
+    <style>
+        :root { --primary: #0A84FF; --bg: #121212; --card: #1C1C1E; --text: #F2F2F7; --border: #3A3A3C; --danger: #FF453A; }
+        body { font-family: 'Pretendard', -apple-system, sans-serif; background-color: var(--bg); color: var(--text); padding: 20px; display: flex; justify-content: center; }
+        .container { width: 100%; max-width: 650px; background: var(--card); padding: 35px; border-radius: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); }
+        h2 { text-align: center; color: var(--primary); margin: 0 0 35px 0; font-weight: 800; font-size: 1.6rem; border-bottom: 2px solid var(--primary); padding-bottom: 15px; }
+        .section { margin-bottom: 25px; }
+        label { display: block; margin-bottom: 8px; font-size: 0.85rem; color: #8E8E93; font-weight: 700; text-transform: uppercase; }
+        select { width: 100%; padding: 15px; border-radius: 12px; border: 1.5px solid var(--border); background: #2C2C2E; color: white; font-size: 1rem; outline: none; cursor: pointer; }
+        select:focus { border-color: var(--primary); }
+        .grid-list { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+        .item { display: flex; justify-content: space-between; align-items: center; background: #2C2C2E; padding: 15px; border-radius: 14px; cursor: pointer; transition: 0.2s; border: 1.5px solid transparent; font-size: 0.9rem; }
+        .item.active { border-color: var(--primary); background: rgba(10, 132, 255, 0.15); font-weight: 600; }
+        .item input { margin-right: 12px; accent-color: var(--primary); }
+        .result-card { background: #2C2C2E; padding: 25px; border-radius: 20px; border-left: 5px solid var(--primary); margin-top: 30px; }
+        .res-row { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 1rem; color: #AEAEB2; }
+        .res-row.total { font-size: 2.1rem; font-weight: 900; color: #FFF; border-top: 1px solid var(--border); padding-top: 15px; margin-top: 15px; }
+        .discount-label { color: var(--danger); font-weight: bold; }
+        .tier-badge { font-size: 0.75rem; background: var(--primary); color: white; padding: 3px 10px; border-radius: 8px; margin-left: 10px; }
+        .odoo-btn { width: 100%; background: var(--primary); color: white; border: none; padding: 18px; border-radius: 14px; font-size: 1.1rem; font-weight: 800; cursor: pointer; margin-top: 25px; transition: 0.3s; }
+        .odoo-btn:hover { background: #007AFF; transform: translateY(-2px); }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>InBody Package Deal Calculator</h2>
+
+    <div class="section">
+        <label>Select InBody Model</label>
+        <select id="modelId" onchange="calculate()">
+            <option value="970s">970s</option>
+            <option value="BWA 2.0s">BWA 2.0s</option>
+            <option value="770s">770s</option>
+            <option value="S10">S10</option>
+            <option value="580">580</option>
+            <option value="380">380</option>
+            <option value="270s">270s</option>
+            <option value="260s">260s</option>
+        </select>
+    </div>
+
+    <div class="section">
+        <label>Quick Package Preset</label>
+        <select id="pkgId" onchange="applyPreset()">
+            <option value="custom">-- Custom Selection --</option>
+            <option value="Core">Core</option>
+            <option value="Data+">Data Plus</option>
+            <option value="PaperFree">Paper Free</option>
+            <option value="Challenger">Challenger</option>
+            <option value="Diagnosis">Diagnosis</option>
+            <option value="PARAM">PARAM (Full-Integration)</option>
+        </select>
+    </div>
+
+    <div class="section">
+        <label>Add-ons (Growing Discount)</label>
+        <div class="grid-list" id="addonList"></div>
+    </div>
+
+    <div class="section">
+        <label>Accessories</label>
+        <div class="grid-list" id="accList"></div>
+    </div>
+
+    <div class="result-card">
+        <div class="res-row"><span>Base Unit MSP</span> <span id="outBase">0</span></div>
+        <div class="res-row"><span>Add-ons Total</span> <span id="outAddon">0</span></div>
+        <div class="res-row"><span>Accessories Total</span> <span id="outAcc">0</span></div>
+        <div class="res-row"><span class="discount-label">Bundle Discount <span id="tierLabel" class="tier-badge">No Disc</span></span> <span class="discount-label" id="outDisc">0</span></div>
+        <div class="res-row total"><span>Total MSP</span> <span id="outTotal">0</span></div>
+    </div>
+
+    <button class="odoo-btn" onclick="sendToOdoo()">Generate Odoo Quotation</button>
+</div>
+
+<script>
+// 할인 데이터 테이블
+const modelData = {
+    "970s": { msp: 1770000, odoo_id: 1001, disc: [0, 15000, 30000, 60000, 90000, 120000, 150000], extraStep: 30000 },
+    "BWA 2.0s": { msp: 1770000, odoo_id: 1008, disc: [0, 15000, 30000, 60000, 90000, 120000, 150000], extraStep: 30000 },
+    "770s": { msp: 1070000, odoo_id: 1002, disc: [0, 11000, 22000, 44000, 66000, 88000, 110000], extraStep: 22000 },
+    "S10":  { msp: 839000,  odoo_id: 1004, disc: [0, 9500,  19000, 38000, 57000, 76000, 95000], extraStep: 19000 },
+    "580":  { msp: 859000,  odoo_id: 1003, disc: [0, 9500,  19000, 38000, 57000, 76000, 95000], extraStep: 19000 },
+    "380":  { msp: 529000,  odoo_id: 1005, disc: [0, 5500,  11000, 22000, 33000, 44000, 55000], extraStep: 11000 },
+    "270s": { msp: 399000,  odoo_id: 1006, disc: [0, 5000,  10000, 20000, 30000, 40000, 50000], extraStep: 10000 },
+    "260s": { msp: 265000,  odoo_id: 1007, disc: [0, 2500,  5000,  10000, 15000, 20000, 25000], extraStep: 5000 }
+};
+
+const addons = [
+    { id: "BSM170", name: "BSM170", price: 53000, odoo_id: 2001 },
+    { id: "BSM370", name: "BSM370", price: 75000, odoo_id: 2002 },
+    { id: "BPBIO320", name: "BPBIO320", price: 105900, odoo_id: 2003 },
+    { id: "BPBIO750", name: "BPBIO750", price: 119000, odoo_id: 2004 },
+    { id: "TouchMini", name: "Touch Mini", price: 90000, odoo_id: 2005 },
+    { id: "Touch", name: "Touch Full", price: 215000, odoo_id: 2006 },
+    { id: "InGrip", name: "InGrip+Stand", price: 42500, odoo_id: 2007 },
+    { id: "LBWEB2Y", name: "LB Web (2Y)", price: 30000, odoo_id: 2008 }
+];
+
+const accessories = [
+    { id: "LBWEB1Y", name: "LB Web (1Y)", price: 15000, odoo_id: 3001 },
+    { id: "Isolator", name: "USB Isolator", price: 5200, odoo_id: 3002 },
+    { id: "Dongle", name: "Dongle", price: 5000, odoo_id: 3003 },
+    { id: "Cable", name: "Cable", price: 1070, odoo_id: 3004 }
+];
+
+const presets = {
+    "Core": ["BSM170"],
+    "Data+": ["BSM170", "LBWEB2Y"],
+    "PaperFree": ["BSM170", "LBWEB2Y", "TouchMini"],
+    "Challenger": ["BSM170", "LBWEB2Y", "TouchMini", "InGrip"],
+    "Diagnosis": ["BSM170", "LBWEB2Y", "BPBIO320"],
+    "PARAM": ["BSM170", "LBWEB2Y", "BPBIO320", "InGrip", "Touch", "Isolator", "Dongle"]
+};
+
+function init() {
+    const addonDiv = document.getElementById('addonList');
+    const accDiv = document.getElementById('accList');
+    addons.forEach(i => addonDiv.innerHTML += `<div class="item" id="box_${i.id}" onclick="toggle('${i.id}')"><span><input type="checkbox" id="${i.id}" onchange="calculate()"> ${i.name}</span></div>`);
+    accessories.forEach(i => accDiv.innerHTML += `<div class="item" id="box_${i.id}" onclick="toggle('${i.id}')"><span><input type="checkbox" id="${i.id}" onchange="calculate()"> ${i.name}</span></div>`);
+    calculate();
+}
+
+function toggle(id) { const cb = document.getElementById(id); if(cb) { cb.checked = !cb.checked; calculate(); } }
+
+function applyPreset() {
+    const key = document.getElementById('pkgId').value;
+    [...addons, ...accessories].forEach(i => { document.getElementById(i.id).checked = false; });
+    if(presets[key]) presets[key].forEach(id => { if(document.getElementById(id)) document.getElementById(id).checked = true; });
+    calculate();
+}
+
+function calculate() {
+    const modelKey = document.getElementById('modelId').value;
+    const base = modelData[modelKey];
+    let addonSum = 0, addonCount = 0;
+    addons.forEach(i => {
+        const box = document.getElementById('box_' + i.id);
+        if(document.getElementById(i.id).checked) { addonSum += i.price; addonCount++; box.classList.add('active'); } 
+        else { box.classList.remove('active'); }
+    });
+    let accSum = 0;
+    accessories.forEach(i => {
+        const box = document.getElementById('box_' + i.id);
+        if(document.getElementById(i.id).checked) { accSum += i.price; box.classList.add('active'); } 
+        else { box.classList.remove('active'); }
+    });
+
+    let finalDisc = 0, tierText = "No Disc";
+    if (addonCount > 0) {
+        if (addonCount <= 6) { 
+            finalDisc = base.disc[addonCount]; 
+            const labels = ["", "Core", "Add 1", "Add 2", "Add 3", "Add 4", "Add 5"];
+            tierText = labels[addonCount];
+        } else { 
+            const extra = addonCount - 6; 
+            finalDisc = base.disc[6] + (extra * base.extraStep); 
+            tierText = "Add " + (addonCount - 1); 
+        }
+    }
+    document.getElementById('tierLabel').innerText = tierText;
+    document.getElementById('outBase').innerText = "₹ " + base.msp.toLocaleString();
+    document.getElementById('outAddon').innerText = "₹ " + addonSum.toLocaleString();
+    document.getElementById('outAcc').innerText = "₹ " + accSum.toLocaleString();
+    document.getElementById('outDisc').innerText = "- ₹ " + finalDisc.toLocaleString();
+    document.getElementById('outTotal').innerText = "₹ " + (base.msp + addonSum + accSum - finalDisc).toLocaleString();
+}
+
+async function sendToOdoo() {
+    const modelKey = document.getElementById('modelId').value;
+    const modelInfo = modelData[modelKey];
+    const discount = document.getElementById('outDisc').innerText.replace(/[^0-9]/g, '');
+    const tier = document.getElementById('tierLabel').innerText;
+
+    let selectedItems = [{ product_id: modelInfo.odoo_id }];
+    [...addons, ...accessories].forEach(i => { if(document.getElementById(i.id).checked) selectedItems.push({ product_id: i.odoo_id }); });
+
+    // partner_id는 null로 보내면 파이썬 서버가 Dummy ID로 처리함
+    const payload = { partner_id: null, tier: tier, discount: discount, items: selectedItems };
+
+    try {
+        const response = await fetch('http://localhost:5000/create_quote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const result = await response.json();
+        if(result.status === "success") alert("와 쎄다! 오두 견적서 생성 성공! ID: " + result.order_id);
+        else alert("에반데... 에러 발생: " + result.message);
+    } catch (err) { alert("브릿지 서버 연결 실패! 파이썬 서버 켰어?"); }
+}
+window.onload = init;
+</script>
+</body>
+</html>
